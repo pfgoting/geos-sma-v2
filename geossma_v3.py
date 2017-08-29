@@ -16,6 +16,7 @@ import threading
 import psutil
 from distutils.dir_util import copy_tree
 import numpy as np
+import linecache
 
 # Global paths
 fpath = os.path.dirname(os.path.realpath(__file__))
@@ -86,18 +87,22 @@ class MonitorThread(QtCore.QThread):
         self.opt = opt
 
     # App Functions
-    def getFloorThreshold(self,file):
-        self.file = file
+    def getFloorThreshold(self,sn):
+        self.sn = sn
         self.thresholdDf = pd.read_csv(csvpath)
+        self.snfile = pd.read_csv(os.path.join(resourcePath,"SN.csv"))
+        self.flr = self.snfile.loc[self.snfile['S/N']==self.sn]
+
         self.ordinal = ordinal = lambda n: "%d%s" % (n,"tsnrhtdd".upper()[(n/10%10!=1)*(n%10<4)*n%10::4])
-        self.floor = ordinal(int(self.file.split('.')[1].split('_')[1][1:]))
+        # self.floor = ordinal(int(self.file.split('.')[1].split('_')[1][1:]))
+        self.floor = ordinal(int(self.flr.FLOOR))
         print "{} floor selected...".format(self.floor)
         # Get threshold on floor
         self.floorDf = self.thresholdDf.loc[self.thresholdDf['STORY LEVEL'].str.match("{}".format(self.floor))==True]
         # self.floorDf = self.thresholdDf.loc[self.thresholdDf['STORY LEVEL'].str.contains("{}".format(self.floor))==True]
-        self.xThreshold = float(self.floorDf['DISPLACEMENT EQX (mm)'])*.02
-        self.yThreshold = float(self.floorDf['DISPLACEMENT EQY (mm)'])*.02
-        self.zThreshold = float(self.floorDf['DISPLACEMENT EQX (mm)'])*0.666*.02
+        self.xThreshold = float(self.floorDf['DISPLACEMENT EQX (mm)'])*.7
+        self.yThreshold = float(self.floorDf['DISPLACEMENT EQY (mm)'])*.7
+        self.zThreshold = float(self.floorDf['DISPLACEMENT EQX (mm)'])*0.666*.7
         self.threshold = (self.xThreshold,self.yThreshold,self.zThreshold)
         return self.threshold
 
@@ -108,6 +113,44 @@ class MonitorThread(QtCore.QThread):
         print self.before
         state = True
         self.added_group = []
+
+        def func():
+            # print "group: {}".format(self.added_group)
+            self.valX = 0
+            self.valY = 0
+            self.valZ = 0
+            for self.added in self.added_group:
+                aa = self.added
+                print 'added: {}'.format(self.added)
+                # Convert new files using k2cosmos
+                print "converting: {}".format(self.added)
+                self.sn = self.k2cosmos(self.added)
+                time.sleep(5)
+
+                # print 'Floor: {}'.format(self.added[0].split('.')[1].split('_')[1][1:])
+                # Get floor threshold
+                self.threshold = self.getFloorThreshold(self.sn)
+
+                # Run prism for new files
+                # self.m0,self.m1,self.m2 = self.runPrism(self.threshold,self.inp,self.opt)
+                # print "m0,m1,m2: {},{},{}".format(self.m0,self.m1,self.m2)
+                self.vals = self.runPrism(self.opt)
+                if self.vals[0][0] >= self.valX:
+                    self.valX = self.vals[0][0]
+                elif self.vals[0][0] >= self.valX:
+                    self.valX = self.vals[0][0]
+                elif self.vals[0][0] >= self.valX:
+                    self.valX = self.vals[0][0]
+
+                # archive output
+                self.archiveOut = os.path.join(histPath,'computed_parms\out')
+                copy_tree(self.outPath,self.archiveOut)
+
+            self.vals = [(self.valX, 'X'), (self.valY, 'Y'), (self.valZ, 'Z')]
+            self.m0,self.m1,self.m2 = self.checkThreshold(self.inp, self.vals, self.threshold)
+            self.data_downloaded.emit((self.m0,self.m1,self.m2))
+            time.sleep(0.1)
+            self.added_group = []
         while state:
             time.sleep (3)
             self.after = dict ([(self.f, None) for self.f in os.listdir(self.path_to_watch) if '.evt' in self.f])
@@ -119,48 +162,54 @@ class MonitorThread(QtCore.QThread):
                 self.timeNow = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print "A new event has been recorded at {}.".format(self.timeNow)
                 self.added_group.extend(self.added)
-            if len(self.added_group) >= 3 or :
-                # print "group: {}".format(self.added_group)
-                self.valX = 0
-                self.valY = 0
-                self.valZ = 0
-                for self.added in self.added_group:
-                    # Convert new files using k2cosmos
-                    print "converting: {}".format(self.added)
-                    self.k2cosmos(self.added)
-                    time.sleep(3)
+                # Create timer function
+                t = threading.Timer(60, func)
+                t.start()
 
-                    # print 'Floor: {}'.format(self.added[0].split('.')[1].split('_')[1][1:])
-                    # Get floor threshold
-                    self.threshold = self.getFloorThreshold(self.added)
+            if len(self.added_group) >= 3:
+                print "Running"
+                t.cancel()
+                func()
+                # # print "group: {}".format(self.added_group)
+                # self.valX = 0
+                # self.valY = 0
+                # self.valZ = 0
+                # for self.added in self.added_group:
+                #     # Convert new files using k2cosmos
+                #     print "converting: {}".format(self.added)
+                #     self.k2cosmos(self.added)
+                #     time.sleep(3)
 
-                    # Run prism for new files
-                    # self.m0,self.m1,self.m2 = self.runPrism(self.threshold,self.inp,self.opt)
-                    # print "m0,m1,m2: {},{},{}".format(self.m0,self.m1,self.m2)
-                    self.vals = self.runPrism(self.opt)
-                    if self.vals[0][0] >= self.valX:
-                        self.valX = self.vals[0][0]
-                    elif self.vals[0][0] >= self.valX:
-                        self.valX = self.vals[0][0]
-                    elif self.vals[0][0] >= self.valX:
-                        self.valX = self.vals[0][0]
+                #     # print 'Floor: {}'.format(self.added[0].split('.')[1].split('_')[1][1:])
+                #     # Get floor threshold
+                #     self.threshold = self.getFloorThreshold(self.added)
 
-                    # archive output
-                    self.archiveOut = os.path.join(histPath,'computed_parms\out')
-                    copy_tree(self.outPath,self.archiveOut)
+                #     # Run prism for new files
+                #     # self.m0,self.m1,self.m2 = self.runPrism(self.threshold,self.inp,self.opt)
+                #     # print "m0,m1,m2: {},{},{}".format(self.m0,self.m1,self.m2)
+                #     self.vals = self.runPrism(self.opt)
+                #     if self.vals[0][0] >= self.valX:
+                #         self.valX = self.vals[0][0]
+                #     elif self.vals[0][0] >= self.valX:
+                #         self.valX = self.vals[0][0]
+                #     elif self.vals[0][0] >= self.valX:
+                #         self.valX = self.vals[0][0]
 
-                self.vals = [(self.valX, 'X'), (self.valY, 'Y'), (self.valZ, 'Z')]
-                self.m0,self.m1,self.m2 = self.checkThreshold(self.inp, self.vals, self.threshold)
-                self.data_downloaded.emit((self.m0,self.m1,self.m2))
-                time.sleep(0.1)
-                self.added_group = []
+                #     # archive output
+                #     self.archiveOut = os.path.join(histPath,'computed_parms\out')
+                #     copy_tree(self.outPath,self.archiveOut)
+
+                # self.vals = [(self.valX, 'X'), (self.valY, 'Y'), (self.valZ, 'Z')]
+                # self.m0,self.m1,self.m2 = self.checkThreshold(self.inp, self.vals, self.threshold)
+                # self.data_downloaded.emit((self.m0,self.m1,self.m2))
+                # time.sleep(0.1)
+                # self.added_group = []
             if self.removed:
                 print "Removed: ", ", ".join(self.removed)
             self.before = self.after
 
     def k2cosmos(self,file):
         self.archiveIn = os.path.join(histPath,'computed_parms\in')
-
         # Convert the new file to cosmos file format
         self.file = file
         self.k2c = os.path.join(rootPath,'K2C')
@@ -175,9 +224,12 @@ class MonitorThread(QtCore.QThread):
         self.inPath = os.path.join(fpath,'computed_parms\in')
         for item in os.listdir(self.k2c):
             if item.endswith('.v0'):
+                itemPath = os.path.join(self.k2c,item)
+                sn = int(linecache.getline(itemPath,7).split()[3])
                 shutil.move(os.path.join(self.k2c,item),os.path.join(self.inPath,item))
         copy_tree(self.inPath,self.archiveIn)
         print "Done converting to cosmos format..."
+        return sn
 
 
     def clearInOutDir(self):
@@ -229,6 +281,7 @@ class MonitorThread(QtCore.QThread):
                             self.unit = self.l.split('at')[0].split()[3]
                             self.axis = self.axes[fname.split('.')[-3]]
                             self.vals.append((self.val,self.axis))
+        print self.vals
         return self.vals
 
     def replaceAlarm(self,opt):
@@ -258,7 +311,7 @@ class MonitorThread(QtCore.QThread):
                 break
             except Exception as e:
                 print e
-                pass
+                self.vals = [(0.0, 'X'), (0.0, 'Y'), (0.0, 'Z')]
             else:
                 break
         self.replaceAlarm(self.opt)
