@@ -116,9 +116,9 @@ class MonitorThread(QtCore.QThread):
 
         def func():
             # print "group: {}".format(self.added_group)
-            self.valX = 0
-            self.valY = 0
-            self.valZ = 0
+            self.valX = []
+            self.valY = []
+            self.valZ = []
             for self.added in self.added_group:
                 aa = self.added
                 print 'added: {}'.format(self.added)
@@ -135,18 +135,25 @@ class MonitorThread(QtCore.QThread):
                 # self.m0,self.m1,self.m2 = self.runPrism(self.threshold,self.inp,self.opt)
                 # print "m0,m1,m2: {},{},{}".format(self.m0,self.m1,self.m2)
                 self.vals = self.runPrism(self.opt)
-                if self.vals[0][0] >= self.valX:
-                    self.valX = self.vals[0][0]
-                elif self.vals[0][0] >= self.valX:
-                    self.valX = self.vals[0][0]
-                elif self.vals[0][0] >= self.valX:
-                    self.valX = self.vals[0][0]
+                # if self.vals[0][0] >= self.valX:
+                #     self.valX = self.vals[0][0]
+                # elif self.vals[1][0] >= self.valY:
+                #     self.valY = self.vals[0][0]
+                # elif self.vals[2][0] >= self.valZ:
+                #     self.valZ = self.vals[0][0]
+                try:
+                    self.valX.append(self.vals[0][0])
+                    self.valY.append(self.vals[1][0])
+                    self.valZ.append(self.vals[2][0])
+                except Exception as e:
+                    print e
+                    pass
 
                 # archive output
                 self.archiveOut = os.path.join(histPath,'computed_parms\out')
                 copy_tree(self.outPath,self.archiveOut)
 
-            self.vals = [(self.valX, 'X'), (self.valY, 'Y'), (self.valZ, 'Z')]
+            self.vals = [(max(self.valX), 'X'), (max(self.valY), 'Y'), (max(self.valZ), 'Z')]
             self.m0,self.m1,self.m2 = self.checkThreshold(self.inp, self.vals, self.threshold)
             self.data_downloaded.emit((self.m0,self.m1,self.m2))
             time.sleep(0.1)
@@ -304,6 +311,7 @@ class MonitorThread(QtCore.QThread):
         # self.inp = inp
         self.opt = opt
         self.computePrism()
+        time.sleep(2)
     
         while True:
             try:
@@ -312,6 +320,7 @@ class MonitorThread(QtCore.QThread):
             except Exception as e:
                 print e
                 self.vals = [(0.0, 'X'), (0.0, 'Y'), (0.0, 'Z')]
+                break
             else:
                 break
         self.replaceAlarm(self.opt)
