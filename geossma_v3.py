@@ -100,9 +100,9 @@ class MonitorThread(QtCore.QThread):
         # Get threshold on floor
         self.floorDf = self.thresholdDf.loc[self.thresholdDf['STORY LEVEL'].str.match("{}".format(self.floor))==True]
         # self.floorDf = self.thresholdDf.loc[self.thresholdDf['STORY LEVEL'].str.contains("{}".format(self.floor))==True]
-        self.xThreshold = float(self.floorDf['DISPLACEMENT EQX (mm)'])*.7
-        self.yThreshold = float(self.floorDf['DISPLACEMENT EQY (mm)'])*.7
-        self.zThreshold = float(self.floorDf['DISPLACEMENT EQX (mm)'])*0.666*.7
+        self.xThreshold = (float(self.floorDf['DISPLACEMENT EQX (mm)'])/10.)*.7
+        self.yThreshold = (float(self.floorDf['DISPLACEMENT EQY (mm)'])/10.)*.7
+        self.zThreshold = (float(self.floorDf['DISPLACEMENT EQX (mm)'])/10.)*0.666*.7
         self.threshold = (self.xThreshold,self.yThreshold,self.zThreshold)
         return self.threshold
 
@@ -130,6 +130,7 @@ class MonitorThread(QtCore.QThread):
                 # print 'Floor: {}'.format(self.added[0].split('.')[1].split('_')[1][1:])
                 # Get floor threshold
                 self.threshold = self.getFloorThreshold(self.sn)
+                print "threshold: {}".format(self.threshold)
 
                 # Run prism for new files
                 # self.m0,self.m1,self.m2 = self.runPrism(self.threshold,self.inp,self.opt)
@@ -143,11 +144,18 @@ class MonitorThread(QtCore.QThread):
                 #     self.valZ = self.vals[0][0]
                 try:
                     self.valX.append(self.vals[0][0])
+                except Exception as e:
+                    self.valX.append(0.0)
+
+                try:
                     self.valY.append(self.vals[1][0])
+                except Exception as e:
+                    self.valY.append(0.0)
+
+                try:
                     self.valZ.append(self.vals[2][0])
                 except Exception as e:
-                    print e
-                    pass
+                    self.valZ.append(0.0)
 
                 # archive output
                 self.archiveOut = os.path.join(histPath,'computed_parms\out')
@@ -170,7 +178,7 @@ class MonitorThread(QtCore.QThread):
                 print "A new event has been recorded at {}.".format(self.timeNow)
                 self.added_group.extend(self.added)
                 # Create timer function
-                t = threading.Timer(60, func)
+                t = threading.Timer(10, func)
                 t.start()
 
             if len(self.added_group) >= 3:
@@ -547,7 +555,7 @@ class Ui_MainWindow(QtGui.QMainWindow):
                         # get line numbers
                         for index, line in enumerate(accFile):
                             if 'acceleration pts' in line:
-                            	ntime = line.split(',')[1].strip().split(' ')[3]
+                                ntime = line.split(',')[1].strip().split(' ')[3]
                                 numLines =  int(line.strip().split(' ')[0])
                                 startLine = index+1
                     with open(itemPath,'rb') as accFile:
