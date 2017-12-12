@@ -27,6 +27,10 @@ rawDataPath = os.path.join(rootPath,'rawData')
 histPath = os.path.join(fpath, 'archive')
 print rootPath
 out = r"\computed_parms\out"
+wait_time = 10
+
+# TODO: Dynamic file loc
+csvloc = r"D:\desktop\geos-webapp\csv\qchall1.csv"
 
 # Plotting
 import matplotlib
@@ -178,7 +182,7 @@ class MonitorThread(QtCore.QThread):
                 print "A new event has been recorded at {}.".format(self.timeNow)
                 self.added_group.extend(self.added)
                 # Create timer function
-                t = threading.Timer(10, func)
+                t = threading.Timer(wait_time, func)
                 t.start()
 
             if len(self.added_group) >= 3:
@@ -338,8 +342,12 @@ class MonitorThread(QtCore.QThread):
         self.inp = inp
         self.values = values
         self.threshold = threshold
-        # print self.values
-        # print self.threshold
+        print "VALUES"
+        print self.values
+        print "\n"
+        print "TH"
+        print self.threshold
+        print "\n"
 
         # Get individual thresholds
         self.threshX = self.threshold[0]
@@ -351,13 +359,20 @@ class MonitorThread(QtCore.QThread):
 
         # Check if any of the value is greater than the threshold
         self.hit = None
+        self.to_save = {'sensor':1}
         for i in range(len(self.values)):
             self.m = "Calculated {} cm at {}-axis or {}% allowable drift.<br>".format(self.values[i][0],self.values[i][1],(self.values[i][0]/self.threshold[i])*100)
             self.messages.append(self.m)
             if self.values[i][0] >= self.threshold[i]:
                 self.hit = True
+                self.to_save[self.values[i][1]] = (self.values[i][0]/self.threshold[i])*100
+                
+            else:
+                self.to_save[self.values[i][1]] = (self.values[i][0]/self.threshold[i])*100
         print self.messages
+
         if self.hit is True:
+            self.to_save['triggered'] = 't'
             # if self.inp.lower() == 'a':
             #     os.system("start {}".format(os.path.join(resourcePath,'sound.vbs')))
             # else:
@@ -377,11 +392,19 @@ class MonitorThread(QtCore.QThread):
             # QtGui.QMessageBox.about(self,"WARNING!!!","<font size = 40 color = red > {}{}</font><b><font size = 40 color = red > {} </font></b>".format(self.message0,self.message1,self.message2))
             # self.showAlarm(self.message0,self.message1,self.message2)
         else:
+            self.to_save['triggered'] = 'f'
             self.message0 = "Event recorded.<br>"
             self.message1 = ' '.join(self.messages)
             self.message2 = "Threshold not met. Evacuation not necessary."
             # self.showNonAlarm(self.message0,self.message1,self.message2)
-        return self.message0,self.message1,self.message2         
+
+        self.to_csv(self.to_save)
+        return self.message0,self.message1,self.message2
+
+    def to_csv(self,values):
+        series = pd.Series(values)
+        series.to_csv(csvloc)
+
 
 
 class Ui_MainWindow(QtGui.QMainWindow):
